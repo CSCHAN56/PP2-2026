@@ -1,0 +1,37 @@
+[
+    {
+        "name": "홍길동",
+        "height": 1.75,
+        "weight": 70,
+        "bmi": 22.86,
+        "status": "정상"
+    },
+    {
+        "name": "김철수",
+        "height": 1.65,
+        "weight": 55,
+        "bmi": 20.2,
+        "status": "정상"
+    },
+    {
+        "name": "이영희",
+        "height": 1.6,
+        "weight": 75,
+        "bmi": 29.3,
+        "status": "과체중"
+    },
+    {
+        "name": "박민수",
+        "height": 1.8,
+        "weight": 90,
+        "bmi": 27.78,
+        "status": "과체중"
+    },
+    {
+        "name": "최유진",
+        "height": 1.7,
+        "weight": 48,
+        "bmi": 16.61,
+        "status": "저체중"
+    }
+]
