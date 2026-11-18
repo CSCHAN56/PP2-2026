@@ -1,189 +1,330 @@
 
+# modules/health_db.py
+
+import os
 import json
 import csv
 import pickle
+import uuid
+
+from dataclasses import dataclass, asdict
 
 
-# =================================
-# 1. 건강정보 클래스
-# =================================
-
+# 건강정보 데이터 구조
+@dataclass
 class HealthRecord:
-
-    def __init__(self, name, height, weight):
-        self.name = name
-        self.height = height
-        self.weight = weight
-
-    # BMI 계산
-    def calculate_bmi(self):
-        return round(self.weight / (self.height ** 2), 2)
-
-    # 건강 상태 판정
-    def get_status(self):
-        bmi = self.calculate_bmi()
-
-        if bmi < 18.5:
-            return "저체중"
-        elif bmi < 25:
-            return "정상"
-        elif bmi < 30:
-            return "과체중"
-        else:
-            return "비만"
-
-    # 딕셔너리 변환
-    def to_dict(self):
-        return {
-            "name": self.name,
-            "height": self.height,
-            "weight": self.weight,
-            "bmi": self.calculate_bmi(),
-            "status": self.get_status()
-        }
-
-    # 건강정보 출력
-    def display(self):
-        print(
-            f"이름: {self.name}, "
-            f"키: {self.height}m, "
-            f"몸무게: {self.weight}kg, "
-            f"BMI: {self.calculate_bmi()}, "
-            f"상태: {self.get_status()}"
-        )
+    id: str
+    name: str
+    age: int
+    gender: str
+    height: float
+    weight: float
+    bmi: float
+    obesity: str
 
 
-# =================================
-# 2. 건강정보 관리자 클래스
-# =================================
-
-class HealthRecordManager:
+class HealthDB:
 
     def __init__(self):
         self.records = []
 
-    # 건강정보 추가
-    def add_record(self, record):
+    # BMI 계산
+    def calculate_bmi(self, height, weight):
+        height = float(height)
+        weight = float(weight)
+
+        if height <= 0 or weight <= 0:
+            raise ValueError("키와 몸무게는 0보다 커야 합니다.")
+
+        bmi = weight / ((height / 100) ** 2)
+
+        return round(bmi, 2)
+
+    # 비만도 판정
+    def get_obesity(self, bmi):
+
+        if bmi < 18.5:
+            return "저체중"
+        elif bmi < 23:
+            return "정상"
+        elif bmi < 25:
+            return "과체중"
+        elif bmi < 30:
+            return "비만"
+        else:
+            return "고도비만"
+
+    # 건강정보 신규 등록
+    def add_record(self, name, age, gender, height, weight):
+
+        if not str(name).strip():
+            raise ValueError("이름을 입력해야 합니다.")
+
+        age = int(age)
+        height = float(height)
+        weight = float(weight)
+
+        if age <= 0:
+            raise ValueError("나이는 1 이상이어야 합니다.")
+
+        bmi = self.calculate_bmi(height, weight)
+
+        record = HealthRecord(
+            id=str(uuid.uuid4())[:8],
+            name=str(name).strip(),
+            age=age,
+            gender=str(gender),
+            height=height,
+            weight=weight,
+            bmi=bmi,
+            obesity=self.get_obesity(bmi)
+        )
+
         self.records.append(record)
 
-    # 전체 건강정보 출력
-    def display_all(self):
+        return record
+
+    # ID로 건강정보 조회
+    def find_by_id(self, record_id):
+
         for record in self.records:
-            record.display()
+            if record.id == record_id:
+                return record
 
-    # 딕셔너리 목록으로 변환
-    def to_list(self):
-        return [record.to_dict() for record in self.records]
+        return None
 
-    # 딕셔너리 목록을 객체로 변환
-    @classmethod
-    def from_list(cls, data):
-        manager = cls()
+    # ID 중복 확인
+    def check_duplicate(self, record_id):
+
+        return self.find_by_id(record_id) is not None
+
+    # 건강정보 수정
+    def update_record(
+        self, record_id, name, age, gender, height, weight
+    ):
+
+        record = self.find_by_id(record_id)
+
+        if record is None:
+            return False
+
+        age = int(age)
+        height = float(height)
+        weight = float(weight)
+
+        if not str(name).strip():
+            raise ValueError("이름을 입력해야 합니다.")
+
+        if age <= 0:
+            raise ValueError("나이는 1 이상이어야 합니다.")
+
+        bmi = self.calculate_bmi(height, weight)
+
+        record.name = str(name).strip()
+        record.age = age
+        record.gender = str(gender)
+        record.height = height
+        record.weight = weight
+
+        # 키와 몸무게 변경 시 BMI 자동 재계산
+        record.bmi = bmi
+        record.obesity = self.get_obesity(bmi)
+
+        return True
+
+    # 건강정보 삭제
+    def delete_record(self, record_id):
+
+        record = self.find_by_id(record_id)
+
+        if record is None:
+            return False
+
+        self.records.remove(record)
+
+        return True
+
+    # 전체 건강정보 조회
+    def get_all_records(self):
+
+        return self.records
+
+    # 이름 또는 ID 검색
+    def search_record(self, keyword):
+
+        keyword = str(keyword).lower()
+
+        return [
+            record for record in self.records
+            if keyword in record.name.lower()
+            or keyword in record.id.lower()
+        ]
+
+    # 파일 저장
+    def save_file(self, filename):
+
+        os.makedirs(
+            os.path.dirname(filename) or ".",
+            exist_ok=True
+        )
+
+        extension = os.path.splitext(filename)[1].lower()
+
+        data = [
+            asdict(record)
+            for record in self.records
+        ]
+
+        if extension == ".json":
+
+            with open(filename, "w", encoding="utf-8") as file:
+                json.dump(
+                    data,
+                    file,
+                    ensure_ascii=False,
+                    indent=4
+                )
+
+        elif extension == ".csv":
+
+            with open(
+                filename,
+                "w",
+                newline="",
+                encoding="utf-8-sig"
+            ) as file:
+
+                if data:
+                    writer = csv.DictWriter(
+                        file,
+                        fieldnames=data[0].keys()
+                    )
+
+                    writer.writeheader()
+                    writer.writerows(data)
+
+        elif extension == ".txt":
+
+            with open(filename, "w", encoding="utf-8") as file:
+
+                for record in data:
+                    file.write(
+                        json.dumps(record, ensure_ascii=False) + "\n"
+                    )
+
+        elif extension == ".pkl":
+
+            with open(filename, "wb") as file:
+                pickle.dump(data, file)
+
+        else:
+            raise ValueError("지원하지 않는 파일 형식입니다.")
+
+        return True
+
+    # 파일 불러오기
+    def load_file(self, filename):
+
+        extension = os.path.splitext(filename)[1].lower()
+
+        if extension == ".json":
+
+            with open(filename, "r", encoding="utf-8") as file:
+                data = json.load(file)
+
+        elif extension == ".csv":
+
+            with open(
+                filename,
+                "r",
+                encoding="utf-8-sig"
+            ) as file:
+
+                data = list(csv.DictReader(file))
+
+        elif extension == ".txt":
+
+            with open(filename, "r", encoding="utf-8") as file:
+
+                data = [
+                    json.loads(line)
+                    for line in file
+                    if line.strip()
+                ]
+
+        elif extension == ".pkl":
+
+            with open(filename, "rb") as file:
+                data = pickle.load(file)
+
+        else:
+            raise ValueError("지원하지 않는 파일 형식입니다.")
+
+        if not isinstance(data, list):
+            raise ValueError("파일 데이터 형식이 올바르지 않습니다.")
+
+        loaded_records = []
 
         for item in data:
-            record = HealthRecord(
-                item["name"],
+
+            record_id = str(item["id"])
+
+            if any(
+                r.id == record_id for r in loaded_records
+            ):
+                continue
+
+            bmi = self.calculate_bmi(
                 item["height"],
                 item["weight"]
             )
-            manager.add_record(record)
 
-        return manager
+            record = HealthRecord(
+                id=record_id,
+                name=str(item["name"]),
+                age=int(item["age"]),
+                gender=str(item["gender"]),
+                height=float(item["height"]),
+                weight=float(item["weight"]),
+                bmi=bmi,
+                obesity=self.get_obesity(bmi)
+            )
 
+            loaded_records.append(record)
 
-# =================================
-# 3. JSON 저장 및 읽기
-# =================================
+        # 기존 데이터와 ID 중복 확인
+        existing_ids = {
+            record.id for record in self.records
+        }
 
-def save_json(manager, path):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(
-            manager.to_list(),
-            f,
-            ensure_ascii=False,
-            indent=4
-        )
+        added_count = 0
 
+        for record in loaded_records:
 
-def load_json(path):
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+            if record.id not in existing_ids:
+                self.records.append(record)
+                existing_ids.add(record.id)
+                added_count += 1
 
-    return HealthRecordManager.from_list(data)
+        return added_count
 
+    # 통계 계산
+    def get_statistics(self):
 
-# =================================
-# 4. CSV 저장 및 읽기
-# =================================
+        if not self.records:
+            return None
 
-def save_csv(manager, path):
-    with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        fields = ["name", "height", "weight", "bmi", "status"]
+        count = len(self.records)
 
-        writer = csv.DictWriter(f, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(manager.to_list())
-
-
-def load_csv(path):
-    with open(path, "r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        data = []
-
-        for row in reader:
-            data.append({
-                "name": row["name"],
-                "height": float(row["height"]),
-                "weight": float(row["weight"]),
-                "bmi": float(row["bmi"]),
-                "status": row["status"]
-            })
-
-    return HealthRecordManager.from_list(data)
-
-
-# =================================
-# 5. TXT 저장 및 읽기
-# =================================
-
-def save_txt(manager, path):
-    with open(path, "w", encoding="utf-8") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=["name", "height", "weight", "bmi", "status"],
-            delimiter="\t"
-        )
-
-        writer.writeheader()
-        writer.writerows(manager.to_list())
-
-
-def load_txt(path):
-    with open(path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f, delimiter="\t")
-        data = []
-
-        for row in reader:
-            data.append({
-                "name": row["name"],
-                "height": float(row["height"]),
-                "weight": float(row["weight"]),
-                "bmi": float(row["bmi"]),
-                "status": row["status"]
-            })
-
-    return HealthRecordManager.from_list(data)
-
-
-# =================================
-# 6. PICKLE 저장 및 읽기
-# =================================
-
-def save_pickle(manager, path):
-    with open(path, "wb") as f:
-        pickle.dump(manager, f)
-
-
-def load_pickle(path):
-    with open(path, "rb") as f:
-        return pickle.load(f)
+        return {
+            "count": count,
+            "avg_height": round(
+                sum(r.height for r in self.records) / count, 2
+            ),
+            "avg_weight": round(
+                sum(r.weight for r in self.records) / count, 2
+            ),
+            "avg_bmi": round(
+                sum(r.bmi for r in self.records) / count, 2
+            )
+        }
